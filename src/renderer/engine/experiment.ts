@@ -85,6 +85,7 @@ export const MAX_EXPERIMENT_CONCLUSION = 200
 /**
  * 读取基准轨迹在 [from, to) 区间内某旋钮的逐帧取值。
  * 供设置面板在选定区间 / 参数后展示“基准值范围”。
+ * 边界取整并钳制到帧范围内：输入框允许瞬时的小数 / 越界草稿值，实时预览不得因此崩溃。
  */
 export function readBaselineValues(
   frames: TrajFrame[],
@@ -92,8 +93,10 @@ export function readBaselineValues(
   from: number,
   to: number
 ): number[] {
+  const start = Math.max(0, Math.floor(from))
+  const end = Math.min(frames.length, Math.floor(to))
   const out: number[] = []
-  for (let i = from; i < to; i++) out.push(frames[i].input.params[param])
+  for (let i = start; i < end; i++) out.push(frames[i].input.params[param])
   return out
 }
 

@@ -86,6 +86,22 @@ describe('工艺实验：方案构建与输入隔离', () => {
     expect(values).toEqual(frames.slice(10, 14).map((f) => f.input.params.spin))
   })
 
+  it('实时预览对小数 / 越界帧边界安全（取整并钳制，不抛异常）', () => {
+    const frames = recordTrajectory()
+    // 设置面板会在输入过程中直接读到小数 / 负 / 超界边界
+    expect(readBaselineValues(frames, 'spin', 10.9, 14.2)).toEqual(
+      readBaselineValues(frames, 'spin', 10, 14)
+    )
+    expect(readBaselineValues(frames, 'spin', -5, 3)).toEqual(
+      readBaselineValues(frames, 'spin', 0, 3)
+    )
+    expect(readBaselineValues(frames, 'spin', 238, 999)).toEqual(
+      readBaselineValues(frames, 'spin', 238, 240)
+    )
+    // 空 / 倒置区间返回空数组，交给汇总展示“—”，而不是读到 undefined 帧
+    expect(readBaselineValues(frames, 'spin', 10.5, 10.9)).toEqual([])
+  })
+
   it('四个旋钮参数的元数据区间与滑块一致', () => {
     expect(PARAM_META.temperature.min).toBe(400)
     expect(PARAM_META.temperature.max).toBe(1200)
@@ -135,6 +151,21 @@ describe('工艺实验：条件校验', () => {
     const frames = recordTrajectory(30)
     const cond = buildExperimentCondition(frames, draft({ fromFrame: 0, toFrame: 30 }))
     expect(cond.baselineValues).toHaveLength(30)
+  })
+
+  it('小数帧区间按取整后区间执行，与对应的整数区间结果一致', () => {
+    const frames = recordTrajectory()
+    const condFloat = buildExperimentCondition(
+      frames,
+      draft({ param: 'spin', value: 100, fromFrame: 10.9, toFrame: 60.2 })
+    )
+    expect(condFloat.fromFrame).toBe(10)
+    expect(condFloat.toFrame).toBe(60)
+    const condInt = buildExperimentCondition(
+      frames,
+      draft({ param: 'spin', value: 100, fromFrame: 10, toFrame: 60 })
+    )
+    expect(runExperiment(frames, condFloat)).toEqual(runExperiment(frames, condInt))
   })
 })
 

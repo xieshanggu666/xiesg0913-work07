@@ -52,6 +52,17 @@ export function ExperimentDialog(props: { frames: TrajFrame[]; onClose: () => vo
   const [conclusion, setConclusion] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // 帧号只接受整数：输入框虽限制了上下界，浏览器仍允许手输小数；
+  // 实时预览会按帧下标读基准参数，故在入口立即取整并钳制到合法区间
+  const changeFrom = (raw: number): void => {
+    const f = Math.max(0, Math.min(toFrame - 1, Math.floor(Number(raw) || 0)))
+    setFromFrame(f)
+  }
+  const changeTo = (raw: number): void => {
+    const t = Math.max(fromFrame + 1, Math.min(n, Math.floor(Number(raw) || n)))
+    setToFrame(t)
+  }
+
   const switchParam = (k: keyof typeof PARAM_META): void => {
     setParamKey(k)
     setValue(PARAM_META[k].min)
@@ -133,7 +144,7 @@ export function ExperimentDialog(props: { frames: TrajFrame[]; onClose: () => vo
                   step={1}
                   value={fromFrame}
                   disabled={phase === 'running'}
-                  onChange={(ev) => setFromFrame(Math.max(0, Math.min(toFrame - 1, Number(ev.target.value) || 0)))}
+                  onChange={(ev) => changeFrom(Number(ev.target.value))}
                 />
               </label>
               <label className="exp-field">
@@ -145,7 +156,7 @@ export function ExperimentDialog(props: { frames: TrajFrame[]; onClose: () => vo
                   step={1}
                   value={toFrame}
                   disabled={phase === 'running'}
-                  onChange={(ev) => setToFrame(Math.max(fromFrame + 1, Math.min(n, Number(ev.target.value) || n)))}
+                  onChange={(ev) => changeTo(Number(ev.target.value))}
                 />
               </label>
               <span className="exp-rangeinfo muted small">

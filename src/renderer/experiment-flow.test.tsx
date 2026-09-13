@@ -151,6 +151,40 @@ describe('工艺实验入口与完整流程（DOM 级）', () => {
     expect(stored).toHaveLength(1)
   })
 
+  it('小数起始帧不会让实时预览崩溃，运行时按取整帧执行', async () => {
+    recordTrajectory()
+    act(() => findButton(container, '以当前轨迹发起实验').click())
+    await flushAsync()
+    expect(container.querySelector('.exp-dialog')).not.toBeNull()
+
+    const nums = container.querySelectorAll('.exp-field input[type="number"]')
+    // 直接键入小数 / 越界值：实时基准取值预览原本会读 frames[10.5] 抛异常
+    expect(() => {
+      setInput(nums[0] as HTMLInputElement, '10.5')
+      setInput(nums[1] as HTMLInputElement, '60.9')
+      setInput(nums[0] as HTMLInputElement, '-3')
+      setInput(nums[0] as HTMLInputElement, '12.7')
+    }).not.toThrow()
+    // 输入框状态已取整钳制
+    expect((nums[0] as HTMLInputElement).value).toBe('12')
+    expect((nums[1] as HTMLInputElement).value).toBe('60')
+    // 基准取值提示仍在渲染（预览没有被异常打断）
+    expect(container.textContent).toContain('区间内基准取值')
+
+    act(() => findButton(container, '分别运行').click())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50)
+    })
+    await flushAsync()
+
+    act(() => findButton(container, '保存实验').click())
+    await flushAsync()
+
+    const saved = useStudio.getState().experiments[0].condition
+    expect(saved.fromFrame).toBe(12)
+    expect(saved.toFrame).toBe(60)
+  })
+
   it('已保存实验可查看对照并修改结论；删除需二次确认', async () => {
     recordTrajectory()
     const e = useStudio.getState().engine
