@@ -1,4 +1,5 @@
 import type {
+  ExperimentRecord,
   ForgeBridge,
   SnapshotRecord,
   StoryboardPanel,
@@ -17,6 +18,9 @@ const LS_PRESET_KEY = 'glass-forge:storyboard-presets'
 // （预设按 id 引用快照，max(id)+1 在删除最新记录后会串号）
 const LS_SNAPSHOT_SEQ = 'glass-forge:snapshot-seq'
 const LS_PRESET_SEQ = 'glass-forge:preset-seq'
+// 工艺实验与快照 / 预设分开持久化：实验只读地复制一条轨迹，互不影响
+const LS_EXPERIMENT_KEY = 'glass-forge:experiments'
+const LS_EXPERIMENT_SEQ = 'glass-forge:experiment-seq'
 
 function bridge(): ForgeBridge | undefined {
   return typeof window !== 'undefined' ? window.forge : undefined
@@ -118,6 +122,60 @@ export async function deletePreset(id: number): Promise<void> {
     return
   }
   writeLocalPresets(readLocalPresets().filter((r) => r.id !== id))
+}
+
+function readLocalExperiments(): ExperimentRecord[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LS_EXPERIMENT_KEY) ?? '[]') as unknown
+    return Array.isArray(parsed) ? (parsed as ExperimentRecord[]) : []
+  } catch {
+    return []
+  }
+}
+
+function writeLocalExperiments(records: ExperimentRecord[]): void {
+  localStorage.setItem(LS_EXPERIMENT_KEY, JSON.stringify(records))
+}
+
+export async function listExperiments(): Promise<ExperimentRecord[]> {
+  const b = bridge()
+  if (b) return b.listExperiments()
+  return readLocalExperiments().sort((a, b2) => b2.created_at - a.created_at)
+}
+
+export async function saveExperiment(
+  record: Omit<ExperimentRecord, 'id' | 'created_at'>
+): Promise<ExperimentRecord> {
+  const b = bridge()
+  if (b) return b.saveExperiment(record)
+  const all = readLocalExperiments()
+  const full: ExperimentRecord = {
+    ...record,
+    id: nextId(LS_EXPERIMENT_SEQ, all),
+    created_at: Date.now()
+  }
+  all.push(full)
+  writeLocalExperiments(all)
+  return full
+}
+
+export async function updateExperimentConclusion(id: number, conclusion: string): Promise<void> {
+  const b = bridge()
+  if (b) {
+    await b.updateExperimentConclusion(id, conclusion)
+    return
+  }
+  const all = readLocalExperiments().map((r) => (r.id === id ? { ...r, conclusion } : r))
+  writeLocalExperiments(all)
+}
+
+export async function deleteExperiment(id: number): Promise<void> {
+  const b = bridge()
+  if (b) {
+    await b.deleteExperiment(id)
+    return
+  }
+  writeLocalExperiments(readLocalExperiments().filter((r) => r.id !== id))
 }
 
 export async function exportStoryboard(panels: StoryboardPanel[], title: string): Promise<string> {

@@ -2,13 +2,17 @@ import { BrowserWindow, app, dialog, ipcMain, session } from 'electron'
 import { basename, join } from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 import {
+  deleteExperiment,
   deletePreset,
   deleteSnapshot,
+  insertExperiment,
   insertPreset,
   insertSnapshot,
+  listExperiments,
   listPresets,
   listSnapshots,
-  openDatabase
+  openDatabase,
+  updateExperimentConclusion
 } from './db'
 import type { ExportResult, ImportFileResult } from '../shared/types'
 function createWindow(): void {
@@ -41,6 +45,13 @@ function registerIpc(): void {
   ipcMain.handle('pn:presets:list', () => listPresets())
   ipcMain.handle('pn:presets:save', (_e, record) => insertPreset(record))
   ipcMain.handle('pn:presets:delete', (_e, id: number) => deletePreset(id))
+  ipcMain.handle('pn:experiments:list', () => listExperiments())
+  ipcMain.handle('pn:experiments:save', (_e, record) => insertExperiment(record))
+  ipcMain.handle(
+    'pn:experiments:conclusion',
+    (_e, id: number, conclusion: string) => updateExperimentConclusion(id, conclusion)
+  )
+  ipcMain.handle('pn:experiments:delete', (_e, id: number) => deleteExperiment(id))
   ipcMain.handle(
     'pn:storyboard:export',
     async (_e, dataUrl: string, defaultName: string): Promise<ExportResult> => {

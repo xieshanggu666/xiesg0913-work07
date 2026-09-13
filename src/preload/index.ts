@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ForgeBridge, SnapshotRecord, StoryboardPresetRecord } from '../shared/types'
+import type {
+  ExperimentRecord,
+  ForgeBridge,
+  SnapshotRecord,
+  StoryboardPresetRecord
+} from '../shared/types'
 
 const bridge: ForgeBridge = {
   listSnapshots: () => ipcRenderer.invoke('pn:snapshots:list'),
@@ -10,6 +15,12 @@ const bridge: ForgeBridge = {
   savePreset: (record: Omit<StoryboardPresetRecord, 'id' | 'created_at'>) =>
     ipcRenderer.invoke('pn:presets:save', record),
   deletePreset: (id: number) => ipcRenderer.invoke('pn:presets:delete', id),
+  listExperiments: () => ipcRenderer.invoke('pn:experiments:list'),
+  saveExperiment: (record: Omit<ExperimentRecord, 'id' | 'created_at'>) =>
+    ipcRenderer.invoke('pn:experiments:save', record),
+  updateExperimentConclusion: (id: number, conclusion: string) =>
+    ipcRenderer.invoke('pn:experiments:conclusion', id, conclusion),
+  deleteExperiment: (id: number) => ipcRenderer.invoke('pn:experiments:delete', id),
   exportStoryboard: (dataUrl: string, defaultName: string) =>
     ipcRenderer.invoke('pn:storyboard:export', dataUrl, defaultName),
   exportTrajectory: (json: string, defaultName: string) =>

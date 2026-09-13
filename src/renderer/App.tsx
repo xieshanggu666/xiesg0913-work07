@@ -6,6 +6,7 @@ import { MetricsPanel } from './components/MetricsPanel'
 import { Snapshots, Timeline } from './components/Snapshots'
 import { ReplayTimeline } from './components/ReplayTimeline'
 import { StoryboardBar } from './components/StoryboardBar'
+import { ExperimentBar } from './components/ExperimentBar'
 import { useStudio } from './state/store'
 
 export default function App(): JSX.Element {
@@ -38,6 +39,7 @@ export default function App(): JSX.Element {
         </main>
         <aside className="right">
           <Timeline />
+          <ExperimentBar />
           <Snapshots />
           <StoryboardBar />
         </aside>

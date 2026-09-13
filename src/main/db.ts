@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'node:path'
-import type { SnapshotRecord, StoryboardPresetRecord } from '../shared/types'
+import type { ExperimentRecord, SnapshotRecord, StoryboardPresetRecord } from '../shared/types'
 
 let db: Database.Database | null = null
 
@@ -29,6 +29,19 @@ export function openDatabase(): Database.Database {
       title TEXT NOT NULL DEFAULT '',
       queue_json TEXT NOT NULL,
       created_at INTEGER NOT NULL
+    )
+  `)
+  // 工艺实验：条件 / 结果以 JSON 保存，器形对比用两张末帧缩略图，结论由用户填写
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS experiments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      condition_json TEXT NOT NULL,
+      outcome_json TEXT NOT NULL,
+      baseline_thumb TEXT NOT NULL,
+      variant_thumb TEXT NOT NULL,
+      conclusion TEXT NOT NULL DEFAULT ''
     )
   `)
   return db
@@ -109,4 +122,54 @@ export function insertPreset(
 
 export function deletePreset(id: number): void {
   openDatabase().prepare('DELETE FROM storyboard_presets WHERE id = ?').run(id)
+}
+
+interface ExperimentRow {
+  id: number
+  name: string
+  created_at: number
+  condition_json: string
+  outcome_json: string
+  baseline_thumb: string
+  variant_thumb: string
+  conclusion: string
+}
+
+export function listExperiments(): ExperimentRecord[] {
+  const rows = openDatabase()
+    .prepare('SELECT * FROM experiments ORDER BY created_at DESC, id DESC')
+    .all() as ExperimentRow[]
+  return rows
+}
+
+export function insertExperiment(
+  record: Omit<ExperimentRecord, 'id' | 'created_at'>
+): ExperimentRecord {
+  const created_at = Date.now()
+  const info = openDatabase()
+    .prepare(
+      `INSERT INTO experiments
+        (name, created_at, condition_json, outcome_json, baseline_thumb, variant_thumb, conclusion)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      record.name,
+      created_at,
+      record.condition_json,
+      record.outcome_json,
+      record.baseline_thumb,
+      record.variant_thumb,
+      record.conclusion
+    )
+  return { ...record, id: Number(info.lastInsertRowid), created_at }
+}
+
+export function updateExperimentConclusion(id: number, conclusion: string): void {
+  openDatabase()
+    .prepare('UPDATE experiments SET conclusion = ? WHERE id = ?')
+    .run(conclusion, id)
+}
+
+export function deleteExperiment(id: number): void {
+  openDatabase().prepare('DELETE FROM experiments WHERE id = ?').run(id)
 }

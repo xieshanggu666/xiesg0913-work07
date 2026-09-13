@@ -1,5 +1,12 @@
 import { create } from 'zustand'
-import type { SimParams, SnapshotRecord, StoryboardPresetRecord, ToolId, TrajFrame } from '@shared/types'
+import type {
+  ExperimentRecord,
+  SimParams,
+  SnapshotRecord,
+  StoryboardPresetRecord,
+  ToolId,
+  TrajFrame
+} from '@shared/types'
 import {
   DEFAULT_INPUT,
   Engine,
@@ -8,6 +15,15 @@ import {
 } from '../engine/engine'
 import { restoreGlass, type GlassSnapshot } from '../engine/geometry'
 import { summarizeMetrics, type GlassStatusSummary } from '../engine/describe'
+import {
+  MAX_EXPERIMENT_CONCLUSION,
+  MAX_EXPERIMENT_NAME,
+  parseExperimentRecord,
+  serializeExperimentCondition,
+  serializeExperimentOutcome,
+  type ExperimentCondition,
+  type ExperimentOutcome
+} from '../engine/experiment'
 import { parseTrajectory, serializeTrajectory } from '../engine/trajectory'
 import {
   MAX_ANNOTATION_TEXT,
@@ -18,16 +34,20 @@ import {
   type FrameAnnotation
 } from '../engine/annotations'
 import {
+  deleteExperiment,
   deletePreset,
   deleteSnapshot,
+  listExperiments,
   listPresets,
   listSnapshots,
   openAnnotationsFile,
   openTrajectoryFile,
   saveAnnotationsFile,
+  saveExperiment,
   savePreset,
   saveSnapshot,
-  saveTrajectoryFile
+  saveTrajectoryFile,
+  updateExperimentConclusion
 } from './storage'
 
 export interface SnapshotMeta {
@@ -35,6 +55,13 @@ export interface SnapshotMeta {
   snapshot: GlassSnapshot
   /** 由快照玻璃状态算出的状态概述（列表 / 分镜展示用） */
   summary: GlassStatusSummary
+}
+
+/** 列表中一条已解析的工艺实验（条件 / 结果 JSON 在刷新时解析，损坏记录被跳过） */
+export interface ExperimentMeta {
+  record: ExperimentRecord
+  condition: ExperimentCondition
+  outcome: ExperimentOutcome
 }
 
 interface StudioState {
@@ -61,6 +88,8 @@ interface StudioState {
   snapshots: SnapshotMeta[]
   /** 分镜导出配置预设（与快照分开持久化，互不改写） */
   presets: StoryboardPresetRecord[]
+  /** 已保存的工艺实验（条件 + 结果 + 用户结论，独立持久化） */
+  experiments: ExperimentMeta[]
   toast: string | null
   busy: boolean
 
@@ -81,6 +110,21 @@ interface StudioState {
     queue: { id: number; on: boolean }[]
   ) => Promise<boolean>
   removePreset: (id: number) => Promise<void>
+
+  /** 读取已保存的工艺实验；损坏记录跳过并给出提示 */
+  refreshExperiments: () => Promise<void>
+  /** 保存一次实验的条件 / 结果 / 缩略图与用户结论；返回是否成功 */
+  saveExperimentResult: (input: {
+    name: string
+    condition: ExperimentCondition
+    outcome: ExperimentOutcome
+    baselineThumb: string
+    variantThumb: string
+    conclusion: string
+  }) => Promise<boolean>
+  /** 更新某条实验的用户结论（条件 / 结果不可改，实验只能重做） */
+  saveExperimentConclusion: (id: number, conclusion: string) => Promise<void>
+  removeExperiment: (id: number) => Promise<void>
 
   playReplay: () => void
   stopReplay: () => void
@@ -130,6 +174,7 @@ export const useStudio = create<StudioState>((set, get) => {
     annotations: [],
     snapshots: [],
     presets: [],
+    experiments: [],
     toast: null,
     busy: false,
 
@@ -260,6 +305,87 @@ export const useStudio = create<StudioState>((set, get) => {
         get().showToast(name ? `已删除预设「${name}」` : '已删除预设')
       } catch (err) {
         get().showToast(`删除预设失败：${(err as Error).message}`)
+      }
+    },
+
+    refreshExperiments: async () => {
+      try {
+        const records = await listExperiments()
+        const metas: ExperimentMeta[] = []
+        let corrupt = 0
+        for (const record of records) {
+          try {
+            const { condition, outcome } = parseExperimentRecord(record)
+            metas.push({ record, condition, outcome })
+          } catch {
+            corrupt++
+          }
+        }
+        set({ experiments: metas })
+        if (corrupt > 0) {
+          get().showToast(`读取实验列表失败：${corrupt} 条记录数据损坏已跳过`)
+        }
+      } catch (err) {
+        get().showToast(`读取实验列表失败：${(err as Error).message}`)
+      }
+    },
+
+    saveExperimentResult: async ({ name, condition, outcome, baselineThumb, variantThumb, conclusion }) => {
+      const { showToast } = get()
+      const trimmedName = name.trim()
+      if (!trimmedName) {
+        showToast('请填写实验名称')
+        return false
+      }
+      if (trimmedName.length > MAX_EXPERIMENT_NAME) {
+        showToast(`实验名称最长 ${MAX_EXPERIMENT_NAME} 字`)
+        return false
+      }
+      if (conclusion.length > MAX_EXPERIMENT_CONCLUSION) {
+        showToast(`实验结论最长 ${MAX_EXPERIMENT_CONCLUSION} 字`)
+        return false
+      }
+      try {
+        await saveExperiment({
+          name: trimmedName,
+          condition_json: serializeExperimentCondition(condition),
+          outcome_json: serializeExperimentOutcome(outcome),
+          baseline_thumb: baselineThumb,
+          variant_thumb: variantThumb,
+          conclusion: conclusion.trim()
+        })
+        await get().refreshExperiments()
+        showToast(`已保存工艺实验「${trimmedName}」`)
+        return true
+      } catch (err) {
+        showToast(`保存实验失败：${(err as Error).message}`)
+        return false
+      }
+    },
+
+    saveExperimentConclusion: async (id, conclusion) => {
+      const { showToast } = get()
+      if (conclusion.length > MAX_EXPERIMENT_CONCLUSION) {
+        showToast(`实验结论最长 ${MAX_EXPERIMENT_CONCLUSION} 字`)
+        return
+      }
+      try {
+        await updateExperimentConclusion(id, conclusion.trim())
+        await get().refreshExperiments()
+        showToast('已更新实验结论')
+      } catch (err) {
+        showToast(`更新结论失败：${(err as Error).message}`)
+      }
+    },
+
+    removeExperiment: async (id) => {
+      const name = get().experiments.find((m) => m.record.id === id)?.record.name
+      try {
+        await deleteExperiment(id)
+        await get().refreshExperiments()
+        get().showToast(name ? `已删除实验「${name}」` : '已删除实验')
+      } catch (err) {
+        get().showToast(`删除实验失败：${(err as Error).message}`)
       }
     },
 

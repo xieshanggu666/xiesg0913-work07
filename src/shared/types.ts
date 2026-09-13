@@ -68,6 +68,42 @@ export interface StoryboardPresetRecord {
   created_at: number
 }
 
+/**
+ * 工艺实验条件：复制一条基准轨迹，仅在帧区间 [fromFrame, toFrame) 内
+ * 把指定的一项旋钮参数改为 value，其余输入（工具头 / 指针 / 按压 / 其他旋钮）逐帧保持一致。
+ */
+export interface ExperimentCondition {
+  /** 基准轨迹总帧数（复制前） */
+  baselineFrames: number
+  /** 修改区间起始帧（含），0-based */
+  fromFrame: number
+  /** 修改区间结束帧（不含）；等于基准帧数表示改到末帧 */
+  toFrame: number
+  /** 只允许改动的一项旋钮参数 */
+  param: keyof SimParams
+  /** 实验值（受旋钮合法区间约束） */
+  value: number
+  /** 该参数在基准轨迹修改区间内的取值（逐帧记录，仅展示 / 校验用） */
+  baselineValues: number[]
+}
+
+/** SQLite 中保存的一条工艺实验（条件 + 结果 + 用户结论，独立于快照与预设） */
+export interface ExperimentRecord {
+  id: number | null
+  name: string
+  created_at: number
+  /** ExperimentCondition 的 JSON 字符串 */
+  condition_json: string
+  /** ExperimentOutcome 的 JSON 字符串（基准 / 实验双臂指标） */
+  outcome_json: string
+  /** 基准方案末帧 dataURL 缩略图 */
+  baseline_thumb: string
+  /** 实验方案末帧 dataURL 缩略图 */
+  variant_thumb: string
+  /** 用户写下的实验结论（可为空） */
+  conclusion: string
+}
+
 export interface ExportResult {
   ok: boolean
   path?: string
@@ -97,6 +133,12 @@ export interface ForgeBridge {
     record: Omit<StoryboardPresetRecord, 'id' | 'created_at'>
   ): Promise<StoryboardPresetRecord>
   deletePreset(id: number): Promise<void>
+  listExperiments(): Promise<ExperimentRecord[]>
+  saveExperiment(
+    record: Omit<ExperimentRecord, 'id' | 'created_at'>
+  ): Promise<ExperimentRecord>
+  updateExperimentConclusion(id: number, conclusion: string): Promise<void>
+  deleteExperiment(id: number): Promise<void>
   exportStoryboard(dataUrl: string, defaultName: string): Promise<ExportResult>
   exportTrajectory(json: string, defaultName: string): Promise<ExportResult>
   importTrajectory(): Promise<ImportFileResult>
